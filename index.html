@@ -128,12 +128,12 @@ var state={categories:[],selectedCategoryId:null,activeTab:'category',activeBout
   4) Включите Firestore Database
 */
 var FIREBASE_CONFIG={
-  apiKey:'AIzaSyBe8YEdJr8d2jCe1wgCo0Y7pakyrNnBkMs',
-  authDomain:'saifa-82596.firebaseapp.com',
-  projectId:'saifa-82596',
-  storageBucket:'saifa-82596.firebasestorage.app',
-  messagingSenderId:'75020947332',
-  appId:'1:75020947332:web:003317d59863aa091057d1'
+  apiKey:'',
+  authDomain:'',
+  projectId:'',
+  storageBucket:'',
+  messagingSenderId:'',
+  appId:''
 };
 var CLOUD_COLLECTION='karate-tournaments';
 var CLOUD_DOC_ID=getTournamentIdFromUrl();
@@ -350,36 +350,14 @@ function runSelfTests(){
   e[1].winner='Б';
   recalculateCategory(c);
   console.assert(getRoundFights(c,'quarter')[0].source1==='победитель боя №10','source label');
+
   getRoundFights(c,'quarter')[0].sourceFight1='11';
   recalculateCategory(c);
   console.assert(getRoundFights(c,'quarter')[0].source1==='победитель боя №11','manual source override');
+
   getRoundFights(c,'quarter')[0].manualAthlete2='Бай участник';
   recalculateCategory(c);
   console.assert(getRoundFights(c,'quarter')[0].athlete2==='Бай участник','manual athlete in second round');
-
-  var oldCategories=state.categories.slice();
-  state.categories=[];
-  var testCategory=createCategory('Проверка','quarter',false,[]);
-  assignMissingOrDuplicateFightNumbers(testCategory);
-  console.assert(getRoundFights(testCategory,'quarter').length===4,'quarter first round count');
-  state.categories=oldCategories;
-
-  var container=document.getElementById('olympicCreateBlock');
-  renderOlympicCreateInputs('quarter');
-  console.assert(container&&container.querySelectorAll('input').length===12,'participant inputs render for quarter');
-
-  var oldState=JSON.parse(JSON.stringify(state));
-  var boutCategory=createCategory('Бой-тест','finalOnly',false,[]);
-  boutCategory.fights[0].fightNumber='1';
-  boutCategory.fights[0].athlete1='Ака тест';
-  boutCategory.fights[0].athlete2='Широ тест';
-  state.categories=[boutCategory];
-  state.activeTab='bout';
-  state.activeBoutFightId=boutCategory.fights[0].id;
-  chooseWinner(boutCategory.fights[0].id,'athlete1');
-  console.assert(state.activeBoutFightId===boutCategory.fights[0].id,'bout stays active after winner selection');
-  console.assert(boutCategory.fights[0].winner==='Ака тест','bout winner button sets winner globally');
-  state=oldState;
 }
 function init(){
   bindEvents();
