@@ -128,12 +128,12 @@ var state={categories:[],selectedCategoryId:null,activeTab:'category',activeBout
   4) Включите Firestore Database
 */
 var FIREBASE_CONFIG={
-  apiKey:'AIzaSyBe8YEdJr8d2jCe1wgCo0Y7pakyrNnBkMs',
-  authDomain:'saifa-82596.firebaseapp.com',
-  projectId:'saifa-82596',
-  storageBucket:'saifa-82596.firebasestorage.app',
-  messagingSenderId:'75020947332',
-  appId:'1:75020947332:web:003317d59863aa091057d1'
+  apiKey:'',
+  authDomain:'',
+  projectId:'',
+  storageBucket:'',
+  messagingSenderId:'',
+  appId:''
 };
 var CLOUD_COLLECTION='karate-tournaments';
 var CLOUD_DOC_ID=getTournamentIdFromUrl();
@@ -142,6 +142,8 @@ var cloudDocRef=null;
 var cloudEnabled=false;
 var applyingCloudUpdate=false;
 var cloudSaveTimer=null;
+var cloudHasLoadedSnapshot=false;
+var cloudRemoteHasData=false;
 var NL=String.fromCharCode(10);
 var CR=String.fromCharCode(13);
 function uid(){if(window.crypto&&typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID();return 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2);}
@@ -183,9 +185,11 @@ function initFirebaseCloud(){
     cloudDocRef=cloudDb.collection(CLOUD_COLLECTION).doc(CLOUD_DOC_ID);
     cloudEnabled=true;
     cloudDocRef.onSnapshot(function(doc){
-      if(!doc.exists)return;
+      cloudHasLoadedSnapshot=true;
+      if(!doc.exists){cloudRemoteHasData=false;return;}
       var data=doc.data()||{};
       if(!data.state||!Array.isArray(data.state.categories))return;
+      cloudRemoteHasData=data.state.categories.length>0;
       applyingCloudUpdate=true;
       state=data.state;
       if(!state.activeTab)state.activeTab='category';
@@ -203,12 +207,20 @@ function initFirebaseCloud(){
     cloudEnabled=false;
   }
 }
+function stateHasCategories(s){return !!(s&&Array.isArray(s.categories)&&s.categories.length>0);}
 function saveStateToCloudDebounced(){
   if(!cloudEnabled||!cloudDocRef||applyingCloudUpdate)return;
+  if(!cloudHasLoadedSnapshot){console.warn('Cloud save skipped: waiting for initial Firestore load.');return;}
+  if(cloudRemoteHasData&&!stateHasCategories(state)){console.error('Cloud save blocked: refusing to overwrite existing tournament with empty categories.');return;}
   if(cloudSaveTimer)window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer=window.setTimeout(function(){
-    var payload={state:state,updatedAt:new Date().toISOString()};
-    cloudDocRef.set(payload,{merge:true}).catch(function(error){console.error('Firestore save error:',error);});
+    if(cloudRemoteHasData&&!stateHasCategories(state)){console.error('Cloud save blocked: empty state detected before write.');return;}
+    var now=new Date().toISOString();
+    var payload={state:state,updatedAt:now};
+    if(stateHasCategories(state))payload.lastNonEmptyState={state:state,updatedAt:now};
+    cloudDocRef.set(payload,{merge:true}).then(function(){
+      if(stateHasCategories(state))cloudRemoteHasData=true;
+    }).catch(function(error){console.error('Firestore save error:',error);});
   },350);
 }
 function loadState(){
