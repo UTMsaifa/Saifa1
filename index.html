@@ -111,12 +111,37 @@
   <section class="content"><div id="fightNumberWarning"></div><div class="tabs"><button class="tab active" data-tab="category">Категория</button><button class="tab" data-tab="board">Текущий и следующий бой</button><button class="tab" data-tab="bout">Текущий бой</button><button class="tab" data-tab="list">Полный список боёв</button></div><div id="mainView" class="empty-state">Добавьте или выберите категорию слева.</div></section>
 </main>
 <div class="modal-backdrop" id="importModal"><div class="modal"><h2>Массовый ввод боёв</h2><p class="hint">Формат строки: <span class="kbd">номер боя; круг; ака; широ</span><br>Круги: <b>eighth</b>, <b>quarter</b>, <b>semi</b>, <b>final</b>, <b>third</b>, <b>roundRobin</b>.</p><textarea id="bulkText" style="min-height:220px" placeholder="1; eighth; Иванов Иван; Петров Петр"></textarea><div class="toolbar" style="margin-top:14px"><button id="applyBulkImportBtn">Загрузить бои</button><button class="ghost" id="closeImportModalBtn">Отмена</button></div></div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 'use strict';
 var STORAGE_KEY='karateTournamentApp.v7';
 var ROUND_LABELS={eighth:'1/8 финала',quarter:'1/4 финала',semi:'1/2 финала',final:'Финал',third:'Бой за 3 место',roundRobin:'Каждый с каждым'};
 var ALLOWED_BULK_ROUNDS=['eighth','quarter','semi','final','third','roundRobin'];
 var state={categories:[],selectedCategoryId:null,activeTab:'category',activeBoutFightId:null};
+
+/*
+  FIREBASE SETUP
+  1) Создайте проект Firebase
+  2) Добавьте Web App
+  3) Скопируйте firebaseConfig сюда вместо пустых строк
+  4) Включите Firestore Database
+*/
+var FIREBASE_CONFIG={
+  apiKey:'',
+  authDomain:'',
+  projectId:'',
+  storageBucket:'',
+  messagingSenderId:'',
+  appId:''
+};
+var CLOUD_COLLECTION='karate-tournaments';
+var CLOUD_DOC_ID=getTournamentIdFromUrl();
+var cloudDb=null;
+var cloudDocRef=null;
+var cloudEnabled=false;
+var applyingCloudUpdate=false;
+var cloudSaveTimer=null;
 var NL=String.fromCharCode(10);
 var CR=String.fromCharCode(13);
 function uid(){if(window.crypto&&typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID();return 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2);}
@@ -134,8 +159,77 @@ function isFightNumberTakenOutsideCategory(n,cid){n=normalizeFightNumber(n);if(!
 function getNextAvailableFightNumber(extra){var used=getAllUsedFightNumbers();if(extra){for(var key in extra){if(Object.prototype.hasOwnProperty.call(extra,key))used[key]=true;}}var i=1;while(used[String(i)])i++;return String(i);}
 function createCategory(name,format,thirdPlaceEnabled,athletes){athletes=athletes||[];var c={id:uid(),name:name,format:format,startRound:format==='roundRobin3'?null:getInitialRound(format),thirdPlaceEnabled:(format==='roundRobin3'||format==='finalOnly')?false:!!thirdPlaceEnabled,athletes:athletes.slice(0,3),fights:[]};var i;if(format==='eighth'){for(i=0;i<8;i++)c.fights.push(emptyFight('eighth'));for(i=0;i<4;i++)c.fights.push(emptyFight('quarter'));for(i=0;i<2;i++)c.fights.push(emptyFight('semi'));c.fights.push(emptyFight('final'));if(thirdPlaceEnabled)c.fights.push(emptyFight('third'));}if(format==='quarter'){for(i=0;i<4;i++)c.fights.push(emptyFight('quarter'));for(i=0;i<2;i++)c.fights.push(emptyFight('semi'));c.fights.push(emptyFight('final'));if(thirdPlaceEnabled)c.fights.push(emptyFight('third'));}if(format==='semi'){for(i=0;i<2;i++)c.fights.push(emptyFight('semi'));c.fights.push(emptyFight('final'));if(thirdPlaceEnabled)c.fights.push(emptyFight('third'));}if(format==='finalOnly'){c.fights.push(emptyFight('final'));}if(format==='roundRobin3'){var a=athletes[0]||'',b=athletes[1]||'',d=athletes[2]||'';c.fights.push(Object.assign(emptyFight('roundRobin'),{athlete1:a,athlete2:b}),Object.assign(emptyFight('roundRobin'),{athlete1:a,athlete2:d}),Object.assign(emptyFight('roundRobin'),{athlete1:b,athlete2:d}));}return c;}
 function normalizeCategory(c){c.fights=Array.isArray(c.fights)?c.fights:[];for(var i=0;i<c.fights.length;i++){var f=c.fights[i];f.notes=f.notes||{athlete1:'',athlete2:''};f.notes.athlete1=f.notes.athlete1||'';f.notes.athlete2=f.notes.athlete2||'';f.source1=f.source1||'';f.source2=f.source2||'';f.sourceFight1=f.sourceFight1||'';f.sourceFight2=f.sourceFight2||'';f.manualAthlete1=f.manualAthlete1||'';f.manualAthlete2=f.manualAthlete2||'';}c.athletes=Array.isArray(c.athletes)?c.athletes:[];if(!c.format&&c.startRound)c.format=c.startRound;if(!state.activeTab)state.activeTab='category';if(state.activeBoutFightId===undefined)state.activeBoutFightId=null;}
-function loadState(){var raw=localStorage.getItem(STORAGE_KEY);if(!raw)return;try{var p=JSON.parse(raw);if(p&&Array.isArray(p.categories)){state=p;for(var i=0;i<state.categories.length;i++)normalizeCategory(state.categories[i]);}}catch(e){console.error(e);}}
-function saveState(r){if(r===undefined)r=true;localStorage.setItem(STORAGE_KEY,JSON.stringify(state));if(r)render();}
+function getTournamentIdFromUrl(){
+  var query=window.location.search||'';
+  if(query.indexOf('?')===0)query=query.substring(1);
+  var parts=query.split('&');
+  for(var i=0;i<parts.length;i++){
+    var pair=parts[i].split('=');
+    if(decodeURIComponent(pair[0]||'')==='tournament'){
+      return decodeURIComponent(pair[1]||'saifa-chekhov');
+    }
+  }
+  return 'saifa-chekhov';
+}
+function firebaseConfigReady(){return !!(FIREBASE_CONFIG.apiKey&&FIREBASE_CONFIG.projectId&&FIREBASE_CONFIG.appId);}
+function initFirebaseCloud(){
+  if(!firebaseConfigReady()){
+    console.warn('Firebase config is empty. The app is using localStorage only.');
+    return;
+  }
+  try{
+    if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);
+    cloudDb=firebase.firestore();
+    cloudDocRef=cloudDb.collection(CLOUD_COLLECTION).doc(CLOUD_DOC_ID);
+    cloudEnabled=true;
+    cloudDocRef.onSnapshot(function(doc){
+      if(!doc.exists)return;
+      var data=doc.data()||{};
+      if(!data.state||!Array.isArray(data.state.categories))return;
+      applyingCloudUpdate=true;
+      state=data.state;
+      if(!state.activeTab)state.activeTab='category';
+      if(state.activeBoutFightId===undefined)state.activeBoutFightId=null;
+      for(var i=0;i<state.categories.length;i++){normalizeCategory(state.categories[i]);recalculateCategory(state.categories[i]);}
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+      render();
+      applyingCloudUpdate=false;
+    },function(error){
+      console.error('Firestore listener error:',error);
+      cloudEnabled=false;
+    });
+  }catch(error){
+    console.error('Firebase init error:',error);
+    cloudEnabled=false;
+  }
+}
+function saveStateToCloudDebounced(){
+  if(!cloudEnabled||!cloudDocRef||applyingCloudUpdate)return;
+  if(cloudSaveTimer)window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer=window.setTimeout(function(){
+    var payload={state:state,updatedAt:new Date().toISOString()};
+    cloudDocRef.set(payload,{merge:true}).catch(function(error){console.error('Firestore save error:',error);});
+  },350);
+}
+function loadState(){
+  var raw=localStorage.getItem(STORAGE_KEY);
+  if(raw){
+    try{
+      var p=JSON.parse(raw);
+      if(p&&Array.isArray(p.categories)){
+        state=p;
+        for(var i=0;i<state.categories.length;i++)normalizeCategory(state.categories[i]);
+      }
+    }catch(e){console.error(e);}
+  }
+  initFirebaseCloud();
+}
+function saveState(r){
+  if(r===undefined)r=true;
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+  saveStateToCloudDebounced();
+  if(r)render();
+}
 function renderOlympicCreateInputs(format){var root=document.getElementById('olympicCreateBlock');if(!root)return;format=format||document.getElementById('categoryFormat').value||'eighth';if(format==='roundRobin3'){root.innerHTML='';return;}var round=getInitialRound(format),count=getInitialFightCount(format),used={};var html='<div class="small" style="margin-bottom:8px">Первый круг: '+escapeHtml(ROUND_LABELS[round])+'</div>';for(var i=1;i<=count;i++){var hint=getNextAvailableFightNumber(used);used[hint]=true;html+='<div class="field"><label>Бой '+i+' — номер боя</label><input id="firstFight'+i+'Number" placeholder="например, '+hint+'"></div><div class="row"><div class="field"><label>Бой '+i+' — ака</label><input id="firstFight'+i+'A" placeholder="Фамилия Имя"></div><div class="field"><label>Бой '+i+' — широ</label><input id="firstFight'+i+'B" placeholder="Фамилия Имя"></div></div>';}root.innerHTML=html;}
 function toggleCreateOptions(){var f=document.getElementById('categoryFormat').value;document.getElementById('thirdPlaceCreateBlock').style.display=(f==='roundRobin3'||f==='finalOnly')?'none':'block';document.getElementById('roundRobinCreateBlock').style.display=f==='roundRobin3'?'block':'none';renderOlympicCreateInputs(f);}
 function assignMissingOrDuplicateFightNumbers(c){var local={};for(var i=0;i<c.fights.length;i++){var f=c.fights[i];var n=normalizeFightNumber(f.fightNumber);if(!n||isFightNumberTaken(n,c.id,f.id)||local[n])n=getNextAvailableFightNumber(local);f.fightNumber=n;local[n]=true;}}
