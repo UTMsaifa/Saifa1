@@ -128,12 +128,12 @@ var state={categories:[],selectedCategoryId:null,activeTab:'category',activeBout
   4) Включите Firestore Database
 */
 var FIREBASE_CONFIG={
-  apiKey:'AIzaSyBe8YEdJr8d2jCe1wgCo0Y7pakyrNnBkMs',
-  authDomain:'saifa-82596.firebaseapp.com',
-  projectId:'saifa-82596',
-  storageBucket:'saifa-82596.firebasestorage.app',
-  messagingSenderId:'75020947332',
-  appId:'1:75020947332:web:003317d59863aa091057d1'
+  apiKey:'',
+  authDomain:'',
+  projectId:'',
+  storageBucket:'',
+  messagingSenderId:'',
+  appId:''
 };
 var CLOUD_COLLECTION='karate-tournaments';
 var CLOUD_DOC_ID=getTournamentIdFromUrl();
@@ -244,8 +244,8 @@ function isGeneratedFightForCategory(c,f){if(!c||!f)return false;if(c.format==='
 function updateFight(id,field,value){var c=getSelectedCategory();if(!c)return;var f=null;for(var i=0;i<c.fights.length;i++){if(c.fights[i].id===id)f=c.fights[i];}if(!f)return;if(field==='fightNumber'){var n=normalizeFightNumber(value);if(!n){f.fightNumber='';saveState();return;}if(isFightNumberTaken(n,c.id,f.id)){alert('Бой № '+n+' уже есть в другой категории. Введите уникальный номер.');saveState();return;}f.fightNumber=n;saveState();return;}f[field]=value;if(field==='sourceFight1'||field==='sourceFight2'){recalculateCategory(c);saveState();return;}if(field==='athlete1'||field==='athlete2'){if(isGeneratedFightForCategory(c,f)){if(field==='athlete1')f.manualAthlete1=value;else f.manualAthlete2=value;}f.winner='';f.loser='';f.winnerClub='';f.loserClub='';if(c.format==='roundRobin3')syncRoundRobinAthletesFromFights(c);}recalculateCategory(c);saveState();}
 function updateNote(id,key,value){saveState(false);}
 function updateClub(id,key,value){var c=getSelectedCategory();if(!c)return;var f=null;for(var i=0;i<c.fights.length;i++){if(c.fights[i].id===id)f=c.fights[i];}if(!f)return;if(key==='club1')f.club1=value;else f.club2=value;if(f.winner===f.athlete1)f.winnerClub=f.club1;if(f.winner===f.athlete2)f.winnerClub=f.club2;if(f.loser===f.athlete1)f.loserClub=f.club1;if(f.loser===f.athlete2)f.loserClub=f.club2;recalculateCategory(c);saveState(false);}
-function chooseWinner(id,side){var c=getSelectedCategory();if(!c)return;var f=null;for(var i=0;i<c.fights.length;i++){if(c.fights[i].id===id)f=c.fights[i];}if(!f)return;var winner=side==='athlete1'?f.athlete1:f.athlete2;var loser=side==='athlete1'?f.athlete2:f.athlete1;if(!winner)return;f.winner=winner;f.loser=loser||'';f.winnerClub=side==='athlete1'?(f.club1||''):(f.club2||'');f.loserClub=side==='athlete1'?(f.club2||''):(f.club1||'');if(state.activeTab==='bout')state.activeBoutFightId=id;recalculateCategory(c);saveState();}
-function clearWinner(id){var c=getSelectedCategory();if(!c)return;var f=null;for(var i=0;i<c.fights.length;i++){if(c.fights[i].id===id)f=c.fights[i];}if(!f)return;f.winner='';f.loser='';f.winnerClub='';f.loserClub='';if(state.activeTab==='bout')state.activeBoutFightId=id;recalculateCategory(c);saveState();}
+function chooseWinner(id,side){var found=getFightById(id);var c=found?found.category:getSelectedCategory();if(!c)return;var f=found?found.fight:null;if(!f){for(var i=0;i<c.fights.length;i++){if(c.fights[i].id===id)f=c.fights[i];}}if(!f)return;var winner=side==='athlete1'?f.athlete1:f.athlete2;var loser=side==='athlete1'?f.athlete2:f.athlete1;if(!winner)return;f.winner=winner;f.loser=loser||'';f.winnerClub=side==='athlete1'?(f.club1||''):(f.club2||'');f.loserClub=side==='athlete1'?(f.club2||''):(f.club1||'');if(state.activeTab==='bout')state.activeBoutFightId=id;recalculateCategory(c);saveState();}
+function clearWinner(id){var found=getFightById(id);var c=found?found.category:getSelectedCategory();if(!c)return;var f=found?found.fight:null;if(!f){for(var i=0;i<c.fights.length;i++){if(c.fights[i].id===id)f=c.fights[i];}}if(!f)return;f.winner='';f.loser='';f.winnerClub='';f.loserClub='';if(state.activeTab==='bout')state.activeBoutFightId=id;recalculateCategory(c);saveState();}
 function setGeneratedParticipant(f,side,name,src,club){if(!f)return;f[side]=name||'';f[side==='athlete1'?'source1':'source2']=src||'';f[side==='athlete1'?'club1':'club2']=club||'';if(f.winner&&f.winner!==f.athlete1&&f.winner!==f.athlete2){f.winner='';f.loser='';f.winnerClub='';f.loserClub='';}}
 function findFightByNumber(number,category){number=normalizeFightNumber(number);if(!number)return null;if(category){for(var a=0;a<category.fights.length;a++){if(normalizeFightNumber(category.fights[a].fightNumber)===number)return category.fights[a];}}for(var i=0;i<state.categories.length;i++){var c=state.categories[i];for(var j=0;j<c.fights.length;j++){if(normalizeFightNumber(c.fights[j].fightNumber)===number)return c.fights[j];}}return null;}
 function setGeneratedFromSource(targetFight,side,defaultSourceFight,resultType,category){if(!targetFight)return;var manualField=side==='athlete1'?'manualAthlete1':'manualAthlete2';var manualName=String(targetFight[manualField]||'').trim();if(manualName){setGeneratedParticipant(targetFight,side,manualName,'введено вручную',targetFight[side==='athlete1'?'club1':'club2']||'');return;}var sourceField=side==='athlete1'?'sourceFight1':'sourceFight2';var manualNumber=normalizeFightNumber(targetFight[sourceField]);var sourceNumber=manualNumber||(defaultSourceFight?normalizeFightNumber(defaultSourceFight.fightNumber):'');var sourceFight=findFightByNumber(sourceNumber,category);var name='';var club='';if(sourceFight){if(resultType==='loser'){name=sourceFight.loser;club=sourceFight.loserClub||'';}else{name=sourceFight.winner;club=sourceFight.winnerClub||'';}}var label='';if(sourceNumber)label=(resultType==='loser'?'проигравший боя №':'победитель боя №')+sourceNumber;setGeneratedParticipant(targetFight,side,name,label,club);}
@@ -274,7 +274,33 @@ function getFightById(id){if(!id)return null;for(var i=0;i<state.categories.leng
 function renderBoutPage(){var root=document.getElementById('mainView'),p=getCurrentAndNextFight();root.className='';var current=getFightById(state.activeBoutFightId);if(!current){current=p.current;if(current)state.activeBoutFightId=current.fight.id;}if(!current){root.innerHTML='<div class="empty-state">Нет текущего боя: все бои с заполненными участниками завершены или ещё не сформированы.</div>';return;}var f=current.fight,c=current.category;var formatLabel=c.format==='roundRobin3'?'3 человека — каждый с каждым':ROUND_LABELS[c.startRound];root.innerHTML='<div class="bout-screen"><div class="bout-header"><div class="bout-number">Бой № '+escapeHtml(f.fightNumber||'—')+'</div><div class="bout-meta">'+escapeHtml(c.name)+' · '+escapeHtml(formatLabel||'')+' · '+escapeHtml(ROUND_LABELS[f.round]||f.round)+'</div></div><div class="bout-athletes"><div class="bout-athlete-card '+(f.winner&&f.winner===f.athlete1?'winner':'')+'"><div class="bout-side">Ака</div><div class="bout-name">'+renderNameWithClub(f.athlete1||'—',f.club1)+'</div><button class="success" data-action="choose-winner" data-fight-id="'+escapeHtml(f.id)+'" data-side="athlete1" '+(f.athlete1?'':'disabled')+'>Победил ака</button></div><div class="bout-athlete-card '+(f.winner&&f.winner===f.athlete2?'winner':'')+'"><div class="bout-side">Широ</div><div class="bout-name">'+renderNameWithClub(f.athlete2||'—',f.club2)+'</div><button class="success" data-action="choose-winner" data-fight-id="'+escapeHtml(f.id)+'" data-side="athlete2" '+(f.athlete2?'':'disabled')+'>Победил широ</button></div></div><div class="bout-actions"><button class="warning" data-action="clear-winner" data-fight-id="'+escapeHtml(f.id)+'" '+(f.winner?'':'disabled')+'>Сбросить победителя</button></div><button class="bout-finish" data-action="finish-current-bout" data-fight-id="'+escapeHtml(f.id)+'">Бой завершен</button></div>';}
 function finishCurrentBout(id){var current=getFightById(id);if(!current){state.activeBoutFightId=null;renderBoutPage();return;}if(!current.fight.winner){alert('Сначала выберите победителя боя.');return;}state.activeBoutFightId=null;state.activeTab='bout';saveState();}
 function addClubScore(table,club,place){club=String(club||'').trim();if(!club)club='Без клуба';if(!table[club])table[club]={club:club,first:0,second:0,third:0,points:0};if(place===1){table[club].first++;table[club].points+=6;}if(place===2){table[club].second++;table[club].points+=3;}if(place===3){table[club].third++;table[club].points+=1;}}
-function getClubStandings(){var table={};for(var i=0;i<state.categories.length;i++){var c=state.categories[i];if(c.format==='roundRobin3'){var stats=getRoundRobinStats(c);if(stats[0])addClubScore(table,findClubForAthleteInCategory(c,stats[0].athlete),1);if(stats[1])addClubScore(table,findClubForAthleteInCategory(c,stats[1].athlete),2);if(stats[2])addClubScore(table,findClubForAthleteInCategory(c,stats[2].athlete),3);}else{var fin=getRoundFights(c,'final')[0];if(fin&&fin.winner)addClubScore(table,fin.winnerClub||findClubForAthleteInCategory(c,fin.winner),1);if(fin&&fin.loser)addClubScore(table,fin.loserClub||findClubForAthleteInCategory(c,fin.loser),2);if(c.thirdPlaceEnabled){var third=getRoundFights(c,'third')[0];if(third&&third.winner)addClubScore(table,third.winnerClub||findClubForAthleteInCategory(c,third.winner),3);}else{var semis=getRoundFights(c,'semi');for(var s=0;s<semis.length;s++){if(semis[s].loser)addClubScore(table,semis[s].loserClub||findClubForAthleteInCategory(c,semis[s].loser),3);}}}}var arr=[];for(var key in table){if(Object.prototype.hasOwnProperty.call(table,key))arr.push(table[key]);}arr.sort(function(a,b){return b.points-a.points||b.first-a.first||b.second-a.second||b.third-a.third||a.club.localeCompare(b.club);});return arr;}
+function getClubStandings(){var table={};for(var i=0;i<state.categories.length;i++){var c=state.categories[i];if(c.format==='roundRobin3'){var stats=getRoundRobinStats(c);
+      // учитываем только если есть реальные победы (хотя бы один бой завершен)
+      var hasResults=false;
+      for(var f=0;f<c.fights.length;f++){if(c.fights[f].winner)hasResults=true;}
+      if(!hasResults)continue;
+      if(stats[0]&&stats[0].wins>0)addClubScore(table,findClubForAthleteInCategory(c,stats[0].athlete),1);
+      if(stats[1]&&stats[1].wins>0)addClubScore(table,findClubForAthleteInCategory(c,stats[1].athlete),2);
+      if(stats[2]&&stats[2].wins>0)addClubScore(table,findClubForAthleteInCategory(c,stats[2].athlete),3);
+    }else{
+      var fin=getRoundFights(c,'final')[0];
+      // считаем только если финал завершен
+      if(!fin||!fin.winner)continue;
+      addClubScore(table,fin.winnerClub||findClubForAthleteInCategory(c,fin.winner),1);
+      if(fin.loser)addClubScore(table,fin.loserClub||findClubForAthleteInCategory(c,fin.loser),2);
+      if(c.thirdPlaceEnabled){
+        var third=getRoundFights(c,'third')[0];
+        if(third&&third.winner)addClubScore(table,third.winnerClub||findClubForAthleteInCategory(c,third.winner),3);
+      }else{
+        var semis=getRoundFights(c,'semi');
+        for(var s=0;s<semis.length;s++){
+          if(semis[s].loser)addClubScore(table,semis[s].loserClub||findClubForAthleteInCategory(c,semis[s].loser),3);
+        }
+      }
+    }}
+  var arr=[];for(var key in table){if(Object.prototype.hasOwnProperty.call(table,key))arr.push(table[key]);}
+  arr.sort(function(a,b){return b.points-a.points||b.first-a.first||b.second-a.second||b.third-a.third||a.club.localeCompare(b.club);});
+  return arr;}
 function findClubForAthleteInCategory(c,athlete){if(!athlete)return'';for(var i=0;i<c.fights.length;i++){var f=c.fights[i];if(f.athlete1===athlete&&f.club1)return f.club1;if(f.athlete2===athlete&&f.club2)return f.club2;if(f.winner===athlete&&f.winnerClub)return f.winnerClub;if(f.loser===athlete&&f.loserClub)return f.loserClub;}return'';}
 function renderClubStandingsPage(){var root=document.getElementById('mainView');root.className='';var rows=getClubStandings();var html='<h2>Межклубный зачёт</h2><p class="small">Начисление: 1 место — 6 очков, 2 место — 3 очка, 3 место — 1 очко.</p>';if(!rows.length){root.innerHTML=html+'<div class="empty-state">Пока нет завершённых категорий для подсчёта.</div>';return;}html+='<table class="results-table"><thead><tr><th>Место</th><th>Город/клуб</th><th>1 мест</th><th>2 мест</th><th>3 мест</th><th>Баллы</th></tr></thead><tbody>';for(var i=0;i<rows.length;i++){html+='<tr><td>'+(i+1)+'</td><td>'+escapeHtml(rows[i].club)+'</td><td>'+rows[i].first+'</td><td>'+rows[i].second+'</td><td>'+rows[i].third+'</td><td><b>'+rows[i].points+'</b></td></tr>';}html+='</tbody></table>';root.innerHTML=html;}
 function renderNameWithClub(name,club){return escapeHtml(name||'—')+(club?'<div class="small">'+escapeHtml(club)+'</div>':'');}
@@ -352,6 +378,7 @@ function runSelfTests(){
   state.activeBoutFightId=boutCategory.fights[0].id;
   chooseWinner(boutCategory.fights[0].id,'athlete1');
   console.assert(state.activeBoutFightId===boutCategory.fights[0].id,'bout stays active after winner selection');
+  console.assert(boutCategory.fights[0].winner==='Ака тест','bout winner button sets winner globally');
   state=oldState;
 }
 function init(){
